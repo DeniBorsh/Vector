@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <new>
 #include <utility>
+#include <exception>
 
 template<typename T>
 class Vector {
@@ -35,8 +36,17 @@ Vector<T>::Vector(size_t size)
 	, size_{size}
 	, capacity_{size}
 {
-	for (int i = 0; i != size; ++i)
-		new(data_ + i) T{};
+	size_t i = 0;
+	try {
+		for (; i != size; ++i) {
+			new (data_ + i) T();
+		}
+	}
+	catch (...) {
+		DestroyN(data_, i);
+		Deallocate(data_);
+		throw;
+	}
 }
 
 template<typename T>
@@ -45,17 +55,41 @@ Vector<T>::Vector(const Vector<T>& other)
 	, size_{other.size_}
 	, capacity_{other.size_}
 {
-	for (int i = 0; i != other.size_; ++i)
-		CopyConstruct(data_ + i, other.data_[i]);
+	size_t i{};
+	try {
+		for (; i != other.size_; ++i) {
+			CopyConstruct(data_ + i, other.data_[i]);
+		}
+	}
+	catch (...) {
+		DestroyN(data_, i);
+		Deallocate(data_);
+		throw;
+	}
 }
 
 template<typename T>
 void Vector<T>::Reserve(size_t new_capacity) {
 	if (new_capacity <= capacity_) return;
 
-	T* new_data = Allocate(new_capacity);
-	for (int i = 0; i != size_; ++i)
-		CopyConstruct(new_data + i, data_[i]);
+	T* new_data{nullptr};
+	try {
+		new_data = Allocate(new_capacity);
+	}
+	catch (...) {
+		return;
+	}
+
+	size_t i{};
+	try {
+		for (; i != size_; ++i)
+			CopyConstruct(new_data + i, data_[i]);
+	} 
+	catch (...) {
+		DestroyN(new_data, i);
+		Deallocate(new_data);
+		throw;
+	}
 
 	DestroyN(data_, size_);
 	Deallocate(data_);
