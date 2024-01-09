@@ -23,5 +23,8 @@
     <ClInclude Include="vector.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
+    <ClInclude Include="raw_memory.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

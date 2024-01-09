@@ -3,6 +3,8 @@
 #include <new>
 #include <utility>
 #include <exception>
+#include <memory>
+#include "raw_memory.h"
 
 template<typename T>
 class Vector {
@@ -12,99 +14,49 @@ public:
 	Vector(const Vector<T>& other);
 
 	size_t Size() const noexcept { return size_; };
-	size_t Capacity() const noexcept { return capacity_; };
+	size_t Capacity() const noexcept { return data_.Capacity(); };
 	T& operator[](size_t n) { return data_[n]; };
 	const T& operator[](size_t n) const { return data_[n]; };
 	void Reserve(size_t new_capacity);
 
 	~Vector();
 private:
-	T* data_{ nullptr };
-	size_t size_{ 0 };
-	size_t capacity_{ 0 };
+	RawMemory<T> data_{};
+	size_t size_{0};
 
-	static T* Allocate(size_t n);
-	static void Deallocate(T* buf) noexcept;
 	void CopyConstruct(T* place, const T& obj);
-	static void DestroyN(T* buf, size_t n) noexcept;
-	static void Destroy(T* buf) noexcept;
 };
 
 template<typename T>
 Vector<T>::Vector(size_t size)
-	: data_{Allocate(size)}
+	: data_{size}
 	, size_{size}
-	, capacity_{size}
 {
-	size_t i = 0;
-	try {
-		for (; i != size; ++i) {
-			new (data_ + i) T();
-		}
-	}
-	catch (...) {
-		DestroyN(data_, i);
-		Deallocate(data_);
-		throw;
-	}
+	std::uninitialized_value_construct_n(data_.GetAddress(), size);
 }
 
 template<typename T>
 Vector<T>::Vector(const Vector<T>& other)
-	: data_{Allocate(other.size_)}
+	: data_{other.size_}
 	, size_{other.size_}
-	, capacity_{other.size_}
 {
-	size_t i{};
-	try {
-		for (; i != other.size_; ++i) {
-			CopyConstruct(data_ + i, other.data_[i]);
-		}
-	}
-	catch (...) {
-		DestroyN(data_, i);
-		Deallocate(data_);
-		throw;
-	}
+	std::uninitialized_copy_n(other.data_.GetAddress(), other.size_, data_.GetAddress());
 }
 
 template<typename T>
 void Vector<T>::Reserve(size_t new_capacity) {
-	if (new_capacity <= capacity_) return;
+	if (new_capacity <= data_.Capacity()) return;
 
-	T* new_data{nullptr};
-	try {
-		new_data = Allocate(new_capacity);
+	RawMemory<T> new_data{new_capacity};
+
+	if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
+		std::uninitialized_move_n(data_.GetAddress(), size_, new_data.GetAddress());
 	}
-	catch (...) {
-		return;
+	else {
+		std::uninitialized_copy_n(data_.GetAddress(), size_, new_data.GetAddress());
 	}
-
-	size_t i{};
-	try {
-		for (; i != size_; ++i)
-			CopyConstruct(new_data + i, data_[i]);
-	} 
-	catch (...) {
-		DestroyN(new_data, i);
-		Deallocate(new_data);
-		throw;
-	}
-
-	DestroyN(data_, size_);
-	Deallocate(data_);
-	data_ = new_data;
-	capacity_ = new_capacity;
-}
-
-template<typename T>
-T* Vector<T>::Allocate(size_t n) {
-	return n != 0 ? static_cast<T*>(operator new(n * sizeof(T))) : nullptr;
-}
-
-template<typename T>
-void Vector<T>::Deallocate(T* buf) noexcept {
-	operator delete(buf);
+	std::destroy_n(data_.GetAddress(), size_);
+	data_.Swap(new_data);
 }
 
 template<typename T>
@@ -113,19 +65,6 @@ void Vector<T>::CopyConstruct(T* place, const T& obj) {
 }
 
 template<typename T>
-void Vector<T>::DestroyN(T* buf, size_t n) noexcept {
-	for (size_t i = 0; i != n; ++i) {
-		Destroy(buf + i);
-	}
-}
-
-template<typename T>
-void Vector<T>::Destroy(T* buf) noexcept {
-	buf->~T();
-}
-
-template<typename T>
 Vector<T>::~Vector() {
-	DestroyN(data_, size_);
-	Deallocate(data_);
+	std::destroy_n(data_.GetAddress(), size_);
 }
