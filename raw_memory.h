@@ -4,6 +4,10 @@ class RawMemory {
 public:
 	RawMemory() = default;
 	explicit RawMemory(size_t capacity);
+	RawMemory(const RawMemory& other) = delete;
+	RawMemory(RawMemory&& other) noexcept;
+	RawMemory& operator=(const RawMemory& other) = delete;
+	RawMemory<T>& operator=(RawMemory&& other) noexcept;
 	T* operator+(size_t offset);
 	T& operator[](size_t offset);
 	const T& operator[](size_t offset) const;
@@ -24,6 +28,24 @@ template<typename T>
 RawMemory<T>::RawMemory(size_t capacity) 
 	: buffer_{Allocate(capacity)}
 	, capacity_{capacity} {
+}
+
+template<typename T>
+RawMemory<T>::RawMemory(RawMemory&& other) noexcept
+	: buffer_{ other.buffer_ }
+	, capacity_{ other.capacity_ } 
+{
+	other.buffer_ = nullptr;
+	other.capacity_ - 0;
+}
+
+template<typename T>
+RawMemory<T>& RawMemory<T>::operator=(RawMemory&& other) noexcept {
+	capacity_ = other.capacity_;
+	buffer_ = other.buffer_;
+	other.buffer_ = nullptr;
+	other.capacity_ = 0;
+	return *this;
 }
 
 template<typename T>
