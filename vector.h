@@ -26,6 +26,27 @@ public:
 	void Reserve(size_t new_capacity);
 	void Resize(size_t new_size);
 
+	template<typename ...Types>
+	T& EmplaceBack(Types&&... args) {
+		if (size_ == data_.Capacity()) {
+			RawMemory<T> new_data{ size_ == 0 ? 1 : size_ * 2 };
+			new (new_data + size_) T{ std::forward<Types>(args)... };
+
+			if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
+				std::uninitialized_move_n(data_.GetAddress(), size_, new_data.GetAddress());
+			else
+				std::uninitialized_copy_n(data_.GetAddress(), size_, new_data.GetAddress());
+
+			std::destroy_n(data_.GetAddress(), size_);
+			data_.Swap(new_data);
+		}
+		else {
+			new (data_ + size_) T{ std::forward<Types>(args)... };
+		}
+		++size_;
+		return data_[size_ - 1];
+	}
+
 	~Vector();
 private:
 	RawMemory<T> data_{};

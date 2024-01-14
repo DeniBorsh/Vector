@@ -1,19 +1,13 @@
 ﻿#include "vector.h"
 #include <cassert>
 #include <iostream>
-#include <vector>
-#include <string>
-
-
 #include <stdexcept>
-
+#include <string>
 
 namespace {
 
-
-    // Магическое число, используемое для отслеживания живости объекта
+    // "Магическое" число, используемое для отслеживания живости объекта
     inline const uint32_t DEFAULT_COOKIE = 0xdeadbeef;
-
 
     struct TestObj {
         TestObj() = default;
@@ -30,7 +24,6 @@ namespace {
         uint32_t cookie = DEFAULT_COOKIE;
     };
 
-
     struct Obj {
         Obj() {
             if (default_construction_throw_countdown > 0) {
@@ -41,13 +34,18 @@ namespace {
             ++num_default_constructed;
         }
 
-
         explicit Obj(int id)
             : id(id)  //
         {
             ++num_constructed_with_id;
         }
 
+        Obj(int id, std::string name)
+            : id(id)
+            , name(std::move(name))  //
+        {
+            ++num_constructed_with_id_and_name;
+        }
 
         Obj(const Obj& other)
             : id(other.id)  //
@@ -58,29 +56,24 @@ namespace {
             ++num_copied;
         }
 
-
         Obj(Obj&& other) noexcept
             : id(other.id)  //
         {
             ++num_moved;
         }
 
-
         Obj& operator=(const Obj& other) = default;
         Obj& operator=(Obj&& other) = default;
-
 
         ~Obj() {
             ++num_destroyed;
             id = 0;
         }
 
-
         static int GetAliveObjectCount() {
             return num_default_constructed + num_copied + num_moved + num_constructed_with_id
-                - num_destroyed;
+                + num_constructed_with_id_and_name - num_destroyed;
         }
-
 
         static void ResetCounters() {
             default_construction_throw_countdown = 0;
@@ -89,24 +82,23 @@ namespace {
             num_moved = 0;
             num_destroyed = 0;
             num_constructed_with_id = 0;
+            num_constructed_with_id_and_name = 0;
         }
-
 
         bool throw_on_copy = false;
         int id = 0;
-
+        std::string name;
 
         static inline int default_construction_throw_countdown = 0;
         static inline int num_default_constructed = 0;
         static inline int num_constructed_with_id = 0;
+        static inline int num_constructed_with_id_and_name = 0;
         static inline int num_copied = 0;
         static inline int num_moved = 0;
         static inline int num_destroyed = 0;
     };
 
-
 }  // namespace
-
 
 void Test1() {
     Obj::ResetCounters();
@@ -117,7 +109,6 @@ void Test1() {
         Vector<int> v;
         assert(v.Capacity() == 0);
         assert(v.Size() == 0);
-
 
         v.Reserve(SIZE);
         assert(v.Capacity() == SIZE);
@@ -133,7 +124,6 @@ void Test1() {
         v[INDEX] = MAGIC;
         assert(v[INDEX] == MAGIC);
         assert(&v[100] - &v[0] == 100);
-
 
         v.Reserve(SIZE * 2);
         assert(v.Size() == SIZE);
@@ -164,7 +154,6 @@ void Test1() {
     }
     assert(Obj::GetAliveObjectCount() == 0);
 }
-
 
 void Test2() {
     const size_t SIZE = 100;
@@ -218,7 +207,6 @@ void Test2() {
     }
 }
 
-
 void Test3() {
     const size_t MEDIUM_SIZE = 100;
     const size_t LARGE_SIZE = 250;
@@ -228,7 +216,6 @@ void Test3() {
         Vector<int> v(MEDIUM_SIZE);
         {
             auto v_copy(std::move(v));
-
 
             assert(v_copy.Size() == MEDIUM_SIZE);
             assert(v_copy.Capacity() == MEDIUM_SIZE);
@@ -246,7 +233,6 @@ void Test3() {
             assert(moved_from_v[MEDIUM_SIZE / 2].id == ID);
         }
         assert(Obj::GetAliveObjectCount() == 0);
-
 
         assert(Obj::num_moved == 0);
         assert(Obj::num_copied == 0);
@@ -293,7 +279,6 @@ void Test3() {
     }
 }
 
-
 void Test4() {
     const size_t ID = 42;
     const size_t SIZE = 100'500;
@@ -306,7 +291,6 @@ void Test4() {
         assert(Obj::num_default_constructed == SIZE);
     }
     assert(Obj::GetAliveObjectCount() == 0);
-
 
     {
         const size_t NEW_SIZE = 10'000;
@@ -354,12 +338,11 @@ void Test4() {
         assert(Obj::GetAliveObjectCount() == 0);
     }
 
-
     {
         Vector<TestObj> v(1);
         assert(v.Size() == v.Capacity());
         // Операция PushBack существующего элемента вектора должна быть безопасна
-        // даже при реаллокации памяти
+        // даже при реаллокации памии
         v.PushBack(v[0]);
         assert(v[0].IsAlive());
         assert(v[1].IsAlive());
@@ -375,10 +358,42 @@ void Test4() {
     }
 }
 
+void Test5() {
+    const int ID = 42;
+    using namespace std::literals;
+    {
+        Obj::ResetCounters();
+        Vector<Obj> v;
+        auto& elem = v.EmplaceBack(ID, "Ivan"s);
+        assert(v.Capacity() == 1);
+        assert(v.Size() == 1);
+        assert(&elem == &v[0]);
+        assert(v[0].id == ID);
+        assert(v[0].name == "Ivan"s);
+        assert(Obj::num_constructed_with_id_and_name == 1);
+        assert(Obj::GetAliveObjectCount() == 1);
+    }
+    assert(Obj::GetAliveObjectCount() == 0);
+    {
+        Vector<TestObj> v(1);
+        assert(v.Size() == v.Capacity());
+        // Операция EmplaceBack существующего элемента вектора должна быть безопасна
+        // даже при реаллокации памяти
+        v.EmplaceBack(v[0]);
+        assert(v[0].IsAlive());
+        assert(v[1].IsAlive());
+    }
+}
 
 int main() {
-    Test1();
-    Test2();
-    Test3();
-    Test4();
+    try {
+        Test1();
+        Test2();
+        Test3();
+        Test4();
+        Test5();
+    }
+    catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+    }
 }
